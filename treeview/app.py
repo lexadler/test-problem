@@ -20,6 +20,8 @@ from PyQt5.QtWidgets import QWidget
 from treeview.db import DBConfig
 from treeview.db import DBNodeModel
 from treeview.db import TreeDBClient
+from treeview.ui_elements import DBNodeDeletionMBox
+from treeview.ui_elements import UnsavedNodeDeletionMBox
 
 FNT = QFont('Open Sans', 12)
 STRIKED_FNT = QFont('Open Sans', 12)
@@ -29,6 +31,11 @@ TIGHT_BTN_SIZE = QSize(25, 25)
 WIDE_BTN_SIZE = QSize(50, 25)
 
 STRIKED_FNT.setStrikeOut(True)
+
+
+class SavedCacheResult(t.NamedTuple):
+    models: t.List[DBNodeModel]
+    marked_for_delete: t.Set[int]
 
 
 class NarrowButton(QPushButton):
@@ -56,7 +63,7 @@ class NodeItem(QStandardItem):
         super().__init__()
         self.id = node_id
         self.parent_id = parent_id
-        self.data = data or None
+        self.data = data
         self.deleted = False
         self.modified = False
         self._backup: t.Optional[str] = None
@@ -65,23 +72,42 @@ class NodeItem(QStandardItem):
         self.setFont(FNT)
         self.setText(self.data or '(no value)')
 
+    def __repr__(self):
+        return f'Node(id: {self.id}, data: {self.data})'
+
     def set_data(self, data: str) -> None:
         self.setText(data)
-        if self.id is not None:
+        if self.in_database():
             self._backup = self.data
             self.modified = True
             self.setForeground(EDITED_COLOR)
         self.data = data
 
+    def set_unmodifed(self) -> None:
+        self.modified = False
+        self.setForeground(COLOR)
+
     def mark_for_delete(self) -> None:
         if self.deleted:
             return
         if self.modified:
-            self.data, self._backup = self._backup, None
+            self.data = self._backup
             self.setText(self.data)
-            self.setForeground(COLOR)
+            self.set_unmodifed()
         self.deleted = True
         self.setFont(STRIKED_FNT)
+
+    def in_database(self):
+        return self.id is not None
+
+    def to_db_model(self) -> DBNodeModel:
+        if (not self.id or self.id != 1 and not self.parent_id):
+            raise NotImplementedError('Node has wrong id values')
+        return DBNodeModel(
+            id=self.id,
+            parent_id=self.parent_id,
+            node_data=self.data,
+        )
 
     @classmethod
     def from_db_model(cls, node: DBNodeModel) -> 'NodeItem':
@@ -109,6 +135,13 @@ class BaseTreeView(QTreeView):
     def _remove_from_map(self, ids: t.Set[int]) -> None:
         for k in ids:
             self._nodes_map.pop(k, None)
+
+    def _remove_item_row(self, item: NodeItem):
+        parent = item.parent()
+        if parent is None:
+            self._root.removeRow(item.row())
+        else:
+            parent.removeRow(item.row())
 
     def get_selected_node(self) -> t.Optional[NodeItem]:
         index = next(iter(self.selectedIndexes()), None)
@@ -145,6 +178,16 @@ class DBTreeView(BaseTreeView):
         else:
             return node
 
+    def _import_node(self, node: DBNodeModel) -> None:
+        if node.id in self._nodes_map:
+            raise IndexError(
+                f'Node with id {node.id} is already in view'
+            )
+        parent = self.get_node(node.parent_id)
+        item = NodeItem.from_db_model(node)
+        parent.appendRow(item)
+        self._nodes_map[item.id] = item
+
     def mark_subtree_for_delete(self, root_node_id: int) -> t.Set[int]:
 
         deleted_descendants = set()
@@ -169,13 +212,28 @@ class DBTreeView(BaseTreeView):
         node = self.get_node(node_id)
         node.set_data(data)
 
+    def update_view(self, saved_cache: SavedCacheResult) -> None:
+        for node_id in sorted(saved_cache.marked_for_delete, reverse=True):
+            item = self.get_node(node_id)
+            self._remove_item_row(item)
+        self._remove_from_map(saved_cache.marked_for_delete)
+        for model in saved_cache.models:
+            item = self._nodes_map.get(model.id)
+            if item is not None:
+                item.set_unmodifed()
+            else:
+                self._import_node(model)
+        self.expandAll()
+        print(f'nodes map: {self._nodes_map}')
+
 
 class CachedTreeView(BaseTreeView):
 
     _header = 'Cached Tree'
 
-    def __init__(self):
+    def __init__(self, index: int):
         super().__init__()
+        self._index = index
         self.marked_for_delete: t.Set[int] = set()
 
     @staticmethod
@@ -212,26 +270,55 @@ class CachedTreeView(BaseTreeView):
         self._reparent_orphaned(item)
         self.expandAll()
 
-    def delete_node(self, item: NodeItem) -> bool:
-        update_descendants = False
-        if item.id in self._nodes_map:
-            item.mark_for_delete()
-            if item.hasChildren():
-                item.removeRows(0, item.rowCount())
-            del self._nodes_map[item.id]
+    def delete_node(
+        self,
+        item: NodeItem,
+        descendants_ids: t.Optional[t.Set[int]] = None
+    ):
+        if item.in_database():
+            self._nodes_map.pop(item.id, None)
             self.marked_for_delete.add(item.id)
-            update_descendants = True
-        else:
-            item.parent().removeRow(item.row())
-        return update_descendants
+            if descendants_ids:
+                self._update_deleted_descendants(descendants_ids)
+        self._remove_item_row(item)
+        print(f'marked for delete: {self.marked_for_delete}')
+        print(f'nodes map: {self._nodes_map}')
 
-    def update_deleted_descendants(self, descendants_ids: t.Set[int]) -> None:
+    def _update_deleted_descendants(self, descendants_ids: t.Set[int]) -> None:
         for i in range(self._root.rowCount()-1, -1, -1):
             top_item = self._root.child(i, 0)
             if top_item.id in descendants_ids:
                 self._root.removeRow(i)
         self.marked_for_delete.update(descendants_ids)
         self._remove_from_map(descendants_ids)
+
+    def save_cache_and_export_changes(self) -> SavedCacheResult:
+        models = []
+
+        def _export_subtree(item: QStandardItem):
+            if item is not self._root:
+                if item.in_database():
+                    if item.modified:
+                        item.set_unmodifed()
+                        models.append(item.to_db_model())
+                else:
+                    self._index += 1
+                    item.id = self._index
+                    item.parent_id = item.parent().id
+                    models.append(item.to_db_model())
+                    self._nodes_map[item.id] = item
+            for i in range(item.rowCount()):
+                _export_subtree(item.child(i, 0))
+
+        _export_subtree(self._root)
+        result = SavedCacheResult(
+            models=models,
+            marked_for_delete=self.marked_for_delete,
+        )
+        self.marked_for_delete = set()
+        print(f'marked for delete: {self.marked_for_delete}')
+        print(f'nodes map: {self._nodes_map}')
+        return result
 
 
 class TreeDBViewApp(QMainWindow):
@@ -241,15 +328,16 @@ class TreeDBViewApp(QMainWindow):
         self.db = TreeDBClient(conf)
         self.db.reset_nodes()
         data = self.db.export_nodes()
-        self._index = len(data)
         self.setWindowTitle('TreeDB')
         self.resize(500, 500)
         central_wdg = QWidget()
         self.setCentralWidget(central_wdg)
         layout = QGridLayout(central_wdg)
-        self.cache_tree = CachedTreeView()
+        self.cache_tree = CachedTreeView(index=len(data))
         self.db_tree = DBTreeView()
         self.db_tree.load_data(data)
+        self.db_deletion_mbox = DBNodeDeletionMBox(self)
+        self.cache_deletion_mbox = UnsavedNodeDeletionMBox(self)
         layout.addWidget(self.cache_tree, 0, 0)
         get_node_btn = WideButton('<<<')
         get_node_btn.clicked.connect(self.node_to_cache)
@@ -266,7 +354,9 @@ class TreeDBViewApp(QMainWindow):
         edit_node_btn.clicked.connect(self.edit_node)
         cache_btn_layout.addWidget(edit_node_btn)
         cache_btn_layout.addSpacing(10)
-        cache_btn_layout.addWidget(WideButton('Apply'))
+        apply_btn = WideButton('Apply')
+        apply_btn.clicked.connect(self.apply_changes)
+        cache_btn_layout.addWidget(apply_btn)
         cache_btn_layout.addWidget(WideButton('Reset'))
         layout.addLayout(cache_btn_layout, 1, 0)
 
@@ -293,13 +383,6 @@ class TreeDBViewApp(QMainWindow):
         selected_item = self.cache_tree.get_selected_node()
         if selected_item is None:
             return
-        if selected_item.deleted:
-            QMessageBox.warning(
-                self,
-                'Forbidden operation',
-                'Cached node is marked for delete.\nCan not add child.'
-            )
-            return
         value, ok = QInputDialog.getText(
             self, 'Set value', 'Enter node value:'
         )
@@ -307,7 +390,7 @@ class TreeDBViewApp(QMainWindow):
             item = NodeItem(
                 node_id=None,
                 parent_id=selected_item.id,
-                data=value
+                data=value or None
             )
             selected_item.appendRow(item)
             self.cache_tree.expandAll()
@@ -316,23 +399,23 @@ class TreeDBViewApp(QMainWindow):
         selected_item = self.cache_tree.get_selected_node()
         if selected_item is None:
             return
-        update_descendants = self.cache_tree.delete_node(selected_item)
-        if update_descendants:
+        descendants = None
+        if selected_item.in_database():
+            if self.db_deletion_mbox.enabled():
+                if self.db_deletion_mbox.exec() != QMessageBox.Yes:
+                    return
             descendants = self.db_tree.mark_subtree_for_delete(
                 selected_item.id
             )
-            self.cache_tree.update_deleted_descendants(descendants)
+        else:
+            if self.cache_deletion_mbox.enabled():
+                if self.cache_deletion_mbox.exec() != QMessageBox.Yes:
+                    return
+        self.cache_tree.delete_node(selected_item, descendants)
 
     def edit_node(self) -> None:
         selected_item = self.cache_tree.get_selected_node()
         if selected_item is None:
-            return
-        if selected_item.deleted:
-            QMessageBox.warning(
-                self,
-                'Forbidden operation',
-                'Cached node is marked for delete.\nCan not edit value.'
-            )
             return
         value, ok = QInputDialog.getText(
             self, 'Set value', 'Enter node value:'
@@ -341,6 +424,11 @@ class TreeDBViewApp(QMainWindow):
             selected_item.set_data(value)
             if selected_item.id is not None:
                 self.db_tree.update_value(selected_item.id, value)
+
+    def apply_changes(self) -> None:
+        saved_cache = self.cache_tree.save_cache_and_export_changes()
+        self.db_tree.update_view(saved_cache)
+        pass
 
 
 if __name__ == '__main__':
