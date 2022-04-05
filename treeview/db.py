@@ -81,7 +81,7 @@ class TreeDBClient:
         return node
 
     def update_table(self, updates: t.List[NodeUpdates]):
-        '''Performs bulk upsert of new and updates nodes to database
+        '''Performs bulk upsert of new and updated nodes to database
         '''
         insert_stmt = insert(DBNodeModel).values(updates)
         update_stmt = insert_stmt.on_conflict_do_update(
