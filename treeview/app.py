@@ -14,6 +14,7 @@ from treeview.db import TreeDBClient
 from treeview.ui.buttons import NarrowButton
 from treeview.ui.buttons import WideButton
 from treeview.ui.modal import DBNodeDeletionMBox
+from treeview.ui.modal import ResetAllMBox
 from treeview.ui.modal import UnsavedNodeDeletionMBox
 from treeview.views.trees import CachedTreeView
 from treeview.views.trees import DBTreeView
@@ -23,41 +24,50 @@ class TreeDBViewApp(QMainWindow):
 
     def __init__(self, conf: DBConfig):
         super().__init__()
-        self.db = TreeDBClient(conf)
-        self.db.reset_table()
         self.setWindowTitle('TreeDB')
         self.resize(500, 500)
         central_wdg = QWidget()
         self.setCentralWidget(central_wdg)
-        layout = QGridLayout(central_wdg)
+        self.layout = QGridLayout(central_wdg)
+        self.db_deletion_mbox = DBNodeDeletionMBox(self)
+        self.cache_deletion_mbox = UnsavedNodeDeletionMBox(self)
+        self.reset_mbox = ResetAllMBox(self)
+        self.db = TreeDBClient(conf)
+        self.db.reset_table()
+
         self.cache_tree = CachedTreeView(index=len(DEFAULT_TREE))
         self.db_tree = DBTreeView()
         self.db_tree.load_data(DEFAULT_TREE)
-        self.db_deletion_mbox = DBNodeDeletionMBox(self)
-        self.cache_deletion_mbox = UnsavedNodeDeletionMBox(self)
-        layout.addWidget(self.cache_tree, 0, 0)
-        get_node_btn = WideButton('<<<')
-        get_node_btn.clicked.connect(self.node_to_cache)
-        layout.addWidget(get_node_btn, 0, 1)
-        layout.addWidget(self.db_tree, 0, 2)
-        cache_btn_layout = QHBoxLayout()
-        add_node_btn = NarrowButton('+')
-        add_node_btn.clicked.connect(self.add_child_node)
-        cache_btn_layout.addWidget(add_node_btn)
-        delete_node_btn = NarrowButton('-')
-        delete_node_btn.clicked.connect(self.remove_node)
-        cache_btn_layout.addWidget(delete_node_btn)
-        edit_node_btn = NarrowButton('a')
-        edit_node_btn.clicked.connect(self.edit_node)
-        cache_btn_layout.addWidget(edit_node_btn)
-        cache_btn_layout.addSpacing(10)
-        apply_btn = WideButton('Apply')
-        apply_btn.clicked.connect(self.apply_changes)
-        cache_btn_layout.addWidget(apply_btn)
-        reset_btn = WideButton('Reset')
-        reset_btn.clicked.connect(self.reset_all)
-        cache_btn_layout.addWidget(reset_btn)
-        layout.addLayout(cache_btn_layout, 1, 0)
+
+        self.layout.addWidget(self.cache_tree, 0, 0)
+        get_node_btn = WideButton('<<<', self.node_to_cache)
+        self.layout.addWidget(get_node_btn, 0, 1)
+        self.layout.addWidget(self.db_tree, 0, 2)
+        self._construct_lower_layout()
+
+    def _construct_lower_layout(self):
+        btn_layout = QHBoxLayout()
+        cache_buttons = [
+            NarrowButton('+', self.add_child_node),
+            NarrowButton('-', self.remove_node),
+            NarrowButton('a', self.edit_node)
+        ]
+        ops_buttons = [
+            WideButton('Apply', self.apply_changes),
+            WideButton('Reset', self.reset_all)
+        ]
+        for b in cache_buttons:
+            btn_layout.addWidget(b)
+        btn_layout.addSpacing(10)
+        for b in ops_buttons:
+            btn_layout.addWidget(b)
+        self.layout.addLayout(btn_layout, 1, 0)
+
+    def _input_value_modal(self):
+        value, ok = QInputDialog.getText(
+            self, 'Set value', 'Enter node value:'
+        )
+        return value, ok
 
     def node_to_cache(self) -> None:
         selected_item = self.db_tree.get_selected_node()
@@ -67,7 +77,7 @@ class TreeDBViewApp(QMainWindow):
             QMessageBox.warning(
                 self,
                 'Forbidden operation',
-                ('DB tree node is marked for delete.\n'
+                ('DB tree node is marked for deletion.\n'
                     'Can not import to cache.')
             )
             return
@@ -82,9 +92,7 @@ class TreeDBViewApp(QMainWindow):
         selected_item = self.cache_tree.get_selected_node()
         if selected_item is None:
             return
-        value, ok = QInputDialog.getText(
-            self, 'Set value', 'Enter node value:'
-        )
+        value, ok = self._input_value_modal()
         if ok:
             self.cache_tree.add_child_node(selected_item, value)
             self.cache_tree.expandAll()
@@ -111,9 +119,7 @@ class TreeDBViewApp(QMainWindow):
         selected_item = self.cache_tree.get_selected_node()
         if selected_item is None:
             return
-        value, ok = QInputDialog.getText(
-            self, 'Set value', 'Enter node value:'
-        )
+        value, ok = self._input_value_modal()
         if ok and value:
             selected_item.set_data(value)
             if selected_item.id is not None:
@@ -126,10 +132,13 @@ class TreeDBViewApp(QMainWindow):
         self.db_tree.update_view(saved_cache)
 
     def reset_all(self) -> None:
-        self.db.reset_table()
+        if self.reset_mbox.enabled():
+            if self.reset_mbox.exec() != QMessageBox.Yes:
+                return
+        self.cache_tree.reset_view()
         self.db_tree.reset_view()
         self.db_tree.load_data(DEFAULT_TREE)
-        self.cache_tree.reset_view()
+        self.db.reset_table()
 
 
 if __name__ == '__main__':

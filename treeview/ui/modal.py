@@ -45,7 +45,7 @@ class UnsavedNodeDeletionMBox(BaseQuestionMBox):
 class ResetAllMBox(BaseQuestionMBox):
     _title = 'Reset all'
     _text = (
-        "This aciton will reset all tree views\n"
+        "This action will reset all tree views\n"
         'to init state as well as the database table.\n\n'
         'Are you sure to proceed?\n'
     )
