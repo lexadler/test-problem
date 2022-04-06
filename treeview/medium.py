@@ -2,10 +2,9 @@ import typing as t
 
 
 class NodeUpdates(t.TypedDict):
-    id: int
+    id: int  # NOQA: A003
     parent_id: t.Optional[int]
-    node_data: t.Optional[str] = None
-    deleted: bool = False
+    node_data: t.Optional[str]
 
 
 class ExportedCache(t.NamedTuple):

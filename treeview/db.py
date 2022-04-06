@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-from treeview.medium import NodeUpdates
+from .medium import NodeUpdates
 
 TEMPLATE_DB_URL = Template(
     'postgresql://$user:$password@$host:$port/$db'
@@ -25,7 +25,7 @@ class DBConfig(t.NamedTuple):
 class DBNodeModel(DBModelBase):
     __tablename__ = 'nodes'
 
-    id = sa.Column(sa.Integer, primary_key=True)
+    id = sa.Column(sa.Integer, primary_key=True)  # NOQA: A003
     parent_id = sa.Column(sa.Integer, nullable=True)
     node_data = sa.Column(sa.String, nullable=True)
     deleted = sa.Column(sa.Boolean, default=False, nullable=False)
@@ -81,8 +81,10 @@ class TreeDBClient:
         return node
 
     def update_table(self, updates: t.List[NodeUpdates]):
-        '''Performs bulk upsert of new and updated nodes to database
-        '''
+        """Performs bulk upsert of new and updated nodes to database
+        """
+        if not updates:
+            return
         insert_stmt = insert(DBNodeModel).values(updates)
         update_stmt = insert_stmt.on_conflict_do_update(
             index_elements=[DBNodeModel.id],
@@ -95,6 +97,8 @@ class TreeDBClient:
             s.commit()
 
     def soft_delete(self, *node_ids: int) -> int:
+        if not node_ids:
+            return 0
         with self.session() as s:
             deleted_count = s.query(DBNodeModel).filter(
                 DBNodeModel.id.in_(node_ids)

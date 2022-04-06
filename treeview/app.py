@@ -1,6 +1,5 @@
-import sys
+import typing as t
 
-from PyQt5.QtWidgets import QApplication
 from PyQt5.QtWidgets import QGridLayout
 from PyQt5.QtWidgets import QHBoxLayout
 from PyQt5.QtWidgets import QInputDialog
@@ -47,15 +46,15 @@ class TreeDBViewApp(QMainWindow):
 
     def _construct_lower_layout(self):
         btn_layout = QHBoxLayout()
-        cache_buttons = [
+        cache_buttons = (
             NarrowButton('+', self.add_child_node),
             NarrowButton('-', self.remove_node),
             NarrowButton('a', self.edit_node)
-        ]
-        ops_buttons = [
+        )
+        ops_buttons = (
             WideButton('Apply', self.apply_changes),
             WideButton('Reset', self.reset_all)
-        ]
+        )
         for b in cache_buttons:
             btn_layout.addWidget(b)
         btn_layout.addSpacing(10)
@@ -63,7 +62,7 @@ class TreeDBViewApp(QMainWindow):
             btn_layout.addWidget(b)
         self.layout.addLayout(btn_layout, 1, 0)
 
-    def _input_value_modal(self):
+    def _input_value_modal(self) -> t.Tuple[str, bool]:
         value, ok = QInputDialog.getText(
             self, 'Set value', 'Enter node value:'
         )
@@ -139,18 +138,3 @@ class TreeDBViewApp(QMainWindow):
         self.db_tree.reset_view()
         self.db_tree.load_data(DEFAULT_TREE)
         self.db.reset_table()
-
-
-if __name__ == '__main__':
-    sys.path.append('..')
-    conf = DBConfig(
-        username='postgres',
-        password='sql',
-        host='127.0.0.1',
-        port=5432,
-        db_name='treedb'
-    )
-    app = QApplication(sys.argv)
-    tree_view_app = TreeDBViewApp(conf)
-    tree_view_app.show()
-    sys.exit(app.exec_())

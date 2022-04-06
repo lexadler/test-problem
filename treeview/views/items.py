@@ -30,7 +30,7 @@ class BaseNodeItem(QStandardItem):
         self.setFont(DEFAULT_FNT)
         self.setText(data or '(no value)')
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'Node(id: {self.id}, data: {self.text()})'
 
     def set_modified(self) -> None:
@@ -101,7 +101,7 @@ class CacheViewNodeItem(BaseNodeItem):
         self.parent_id = parent_id
         self.data = data
 
-    def in_database(self):
+    def in_database(self) -> bool:
         return self.id is not None
 
     def set_data(self, data: str) -> None:

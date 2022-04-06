@@ -49,7 +49,6 @@ class BaseTreeView(QTreeView):
     def reset_view(self):
         self._nodes_map = {}
         self._init_model()
-        print(self._nodes_map)
 
 
 class DBTreeView(BaseTreeView):
@@ -82,9 +81,10 @@ class DBTreeView(BaseTreeView):
             return node
 
     def _import_node(self, node: NodeUpdates) -> None:
-        if node['id'] in self._nodes_map:
+        node_id = node['id']
+        if node_id in self._nodes_map:
             raise IndexError(
-                f'Node with id {node.id} is already in view'
+                f'Node with id {node_id} is already in view'
             )
         item = DBViewNodeItem.from_dict(node)
         parent = self.get_node(node['parent_id'])
@@ -97,8 +97,8 @@ class DBTreeView(BaseTreeView):
 
         def _delete_descendants(item: DBViewNodeItem):
             if item.hasChildren():
-                for i in range(item.rowCount()):
-                    child = item.child(i, 0)
+                for row in range(item.rowCount()):
+                    child = item.child(row, 0)
                     deleted_descendants.add(child.id)
                     if child.deleted:
                         continue
@@ -127,7 +127,6 @@ class DBTreeView(BaseTreeView):
             else:
                 self._import_node(node)
         self.expandAll()
-        print(f'nodes map: {self._nodes_map}')
 
 
 class CachedTreeView(BaseTreeView):
@@ -145,20 +144,20 @@ class CachedTreeView(BaseTreeView):
         item: CacheViewNodeItem
     ) -> None:
         if parent.hasChildren():
-            for i in range(parent.rowCount()):
-                child = parent.child(i, 0)
+            for row in range(parent.rowCount()):
+                child = parent.child(row, 0)
                 if child.id is None or child.id > item.id:
-                    parent.insertRow(i, item)
+                    parent.insertRow(row, item)
                     return
         parent.appendRow(item)
 
     def _reparent_orphaned(self, item: CacheViewNodeItem) -> None:
-        for i in range(self._root.rowCount()-1, -1, -1):
-            top_item = self._root.child(i, 0)
+        for row in range(self._root.rowCount() - 1, -1, -1):
+            top_item = self._root.child(row, 0)
             if top_item.id < item.id:
                 break
             elif top_item.parent_id == item.id:
-                self._root.takeRow(i)
+                self._root.takeRow(row)
                 self._add_imported_child(item, top_item)
 
     def import_node(self, node: DBNodeModel) -> None:
@@ -196,14 +195,12 @@ class CachedTreeView(BaseTreeView):
             if descendants_ids:
                 self._update_deleted_descendants(descendants_ids)
         self._remove_item_row(item)
-        print(f'marked for delete: {self._marked_for_delete}')
-        print(f'nodes map: {self._nodes_map}')
 
     def _update_deleted_descendants(self, descendants_ids: t.Set[int]) -> None:
-        for i in range(self._root.rowCount()-1, -1, -1):
-            top_item = self._root.child(i, 0)
+        for row in range(self._root.rowCount() - 1, -1, -1):
+            top_item = self._root.child(row, 0)
             if top_item.id in descendants_ids:
-                self._root.removeRow(i)
+                self._root.removeRow(row)
         self._marked_for_delete.update(descendants_ids)
         self._remove_from_map(descendants_ids)
 
@@ -223,8 +220,8 @@ class CachedTreeView(BaseTreeView):
                     updates.append(item.to_dict())
                     self._nodes_map[item.id] = item
                     item.set_saved()
-            for i in range(item.rowCount()):
-                _export_subtree(item.child(i, 0))
+            for row in range(item.rowCount()):
+                _export_subtree(item.child(row, 0))
 
         _export_subtree(self._root)
         result = ExportedCache(
@@ -232,12 +229,9 @@ class CachedTreeView(BaseTreeView):
             marked_for_delete=self._marked_for_delete,
         )
         self._marked_for_delete = set()
-        print(f'marked for delete: {self._marked_for_delete}')
-        print(f'nodes map: {self._nodes_map}')
         return result
 
     def reset_view(self):
         super().reset_view()
         self._index = self._init_index
-        print(self._index)
         self._marked_for_delete = set()

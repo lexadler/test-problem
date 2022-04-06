@@ -1,6 +1,6 @@
-from PyQt5.QtWidgets import QWidget
 from PyQt5.QtWidgets import QCheckBox
 from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtWidgets import QWidget
 
 
 class BaseQuestionMBox(QMessageBox):
@@ -45,7 +45,7 @@ class UnsavedNodeDeletionMBox(BaseQuestionMBox):
 class ResetAllMBox(BaseQuestionMBox):
     _title = 'Reset all'
     _text = (
-        "This action will reset all tree views\n"
+        'This action will reset all tree views\n'
         'to init state as well as the database table.\n\n'
         'Are you sure to proceed?\n'
     )
