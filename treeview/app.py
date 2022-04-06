@@ -76,8 +76,8 @@ class TreeDBViewApp(QMainWindow):
             QMessageBox.warning(
                 self,
                 'Forbidden operation',
-                ('DB tree node is marked for deletion.\n'
-                    'Can not import to cache.')
+                ('DB tree node is deleted.\n'
+                 'Can not import to cache.')
             )
             return
         node = self.db.get_node(selected_item.id)
@@ -91,6 +91,14 @@ class TreeDBViewApp(QMainWindow):
         selected_item = self.cache_tree.get_selected_node()
         if selected_item is None:
             return
+        if selected_item.deleted:
+            QMessageBox.warning(
+                self,
+                'Forbidden operation',
+                ('Cache node is deleted.\n'
+                 'Can not add child.')
+            )
+            return
         value, ok = self._input_value_modal()
         if ok:
             self.cache_tree.add_child_node(selected_item, value)
@@ -102,11 +110,13 @@ class TreeDBViewApp(QMainWindow):
             return
         descendants = None
         if selected_item.in_database():
-            if self.db_deletion_mbox.enabled():
+            if self.db_deletion_mbox.enabled() and not selected_item.deleted:
                 if self.db_deletion_mbox.exec() != QMessageBox.Yes:
                     return
-            descendants = self.db_tree.mark_subtree_for_delete(
-                selected_item.id
+            mirror_item = self.db_tree.get_node(selected_item.id)
+            descendants = self.db_tree.delete_subtree(
+                mirror_item,
+                return_ids=True
             )
         else:
             if self.cache_deletion_mbox.enabled():
@@ -117,6 +127,14 @@ class TreeDBViewApp(QMainWindow):
     def edit_node(self) -> None:
         selected_item = self.cache_tree.get_selected_node()
         if selected_item is None:
+            return
+        if selected_item.deleted:
+            QMessageBox.warning(
+                self,
+                'Forbidden operation',
+                ('Cache node is deleted.\n'
+                 'Can not set new value.')
+            )
             return
         value, ok = self._input_value_modal()
         if ok and value:

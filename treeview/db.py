@@ -27,19 +27,19 @@ class DBNodeModel(DBModelBase):
 
     id = sa.Column(sa.Integer, primary_key=True)  # NOQA: A003
     parent_id = sa.Column(sa.Integer, nullable=True)
-    node_data = sa.Column(sa.String, nullable=True)
+    value = sa.Column(sa.String, nullable=True)
     deleted = sa.Column(sa.Boolean, default=False, nullable=False)
 
 
 DEFAULT_TREE = [
-    DBNodeModel(id=1, parent_id=None, node_data='Node1'),
-    DBNodeModel(id=2, parent_id=1, node_data='Node2'),
-    DBNodeModel(id=3, parent_id=1, node_data='Node3'),
-    DBNodeModel(id=4, parent_id=3, node_data='Node4'),
-    DBNodeModel(id=5, parent_id=1, node_data='Node5'),
-    DBNodeModel(id=6, parent_id=5, node_data='Node6'),
-    DBNodeModel(id=7, parent_id=4, node_data='Node7'),
-    DBNodeModel(id=8, parent_id=4, node_data='Node8'),
+    DBNodeModel(id=1, parent_id=None, value='Node1'),
+    DBNodeModel(id=2, parent_id=1, value='Node2'),
+    DBNodeModel(id=3, parent_id=1, value='Node3'),
+    DBNodeModel(id=4, parent_id=3, value='Node4'),
+    DBNodeModel(id=5, parent_id=1, value='Node5'),
+    DBNodeModel(id=6, parent_id=5, value='Node6'),
+    DBNodeModel(id=7, parent_id=4, value='Node7'),
+    DBNodeModel(id=8, parent_id=4, value='Node8'),
 ]
 
 
@@ -89,7 +89,7 @@ class TreeDBClient:
         update_stmt = insert_stmt.on_conflict_do_update(
             index_elements=[DBNodeModel.id],
             set_={
-                'node_data': insert_stmt.excluded.node_data,
+                'value': insert_stmt.excluded.value,
             }
         )
         with self.session() as s:
