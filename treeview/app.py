@@ -72,14 +72,6 @@ class TreeDBViewApp(QMainWindow):
         selected_item = self.db_tree.get_selected_node()
         if selected_item is None:
             return
-        if selected_item.deleted:
-            QMessageBox.warning(
-                self,
-                'Forbidden operation',
-                ('DB tree node is deleted.\n'
-                 'Can not import to cache.')
-            )
-            return
         node = self.db.get_node(selected_item.id)
         if node is None:
             raise IndexError(
@@ -95,7 +87,8 @@ class TreeDBViewApp(QMainWindow):
             QMessageBox.warning(
                 self,
                 'Forbidden operation',
-                ('Cache node is deleted.\n'
+                ('Cache node is deleted\n'
+                 'or marked for deletion.\n'
                  'Can not add child.')
             )
             return
@@ -113,11 +106,7 @@ class TreeDBViewApp(QMainWindow):
             if self.db_deletion_mbox.enabled():
                 if self.db_deletion_mbox.exec() != QMessageBox.Yes:
                     return
-            mirror_item = self.db_tree.get_node(selected_item.id)
-            descendants = self.db_tree.delete_subtree(
-                mirror_item,
-                return_ids=True
-            )
+            descendants = self.db_tree.get_descendants(selected_item.id)
         else:
             if self.cache_deletion_mbox.enabled():
                 if self.cache_deletion_mbox.exec() != QMessageBox.Yes:
@@ -132,15 +121,14 @@ class TreeDBViewApp(QMainWindow):
             QMessageBox.warning(
                 self,
                 'Forbidden operation',
-                ('Cache node is deleted.\n'
+                ('Cache node is deleted\n'
+                 'or marked for deletion.\n'
                  'Can not set new value.')
             )
             return
         value, ok = self._input_value_modal()
         if ok and value:
             selected_item.set_data(value)
-            if selected_item.id is not None:
-                self.db_tree.update_value(selected_item.id, value)
 
     def apply_changes(self) -> None:
         saved_cache = self.cache_tree.save_cache_and_export_changes()
