@@ -4,7 +4,7 @@ Test application to update database table storing tree data structure.
 
 ## Requirements:
 
-1. Python3.8 and Docker CE must be installed on the host.
+1. Python 3.8 and Docker CE must be installed on the host.
 
 ## Creating test environment:
 
@@ -13,13 +13,11 @@ Test application to update database table storing tree data structure.
 3. Install package: `pip install .`
 4. Run `sudo docker-compose up -d` from the project folder to create an instance of PostreSQL with the test database.
 
-You can access database in PostgreSQL instance at localhost:5432.
+You can access test database `treedb` at `localhost:5432` with default credentials `postgres:sql`.
 
 ## Usage:
 
-Run `treeview` within an activated virtual environment to start an application for testing purposes. <br>
-An application instance will connect to the database in test container by default. <br>
-Options to explicitly set connection and database settings with CLI can be checked by running `treeview --help`.
+Run `treeview` within an activated virtual environment to start an application for testing purposes. <br> An application instance will connect to the database in test container by default. <br> Options to explicitly set connection and database settings with CLI can be checked by running `treeview --help`.
 
 ## Removing test environment:
 
