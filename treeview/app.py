@@ -106,11 +106,11 @@ class TreeDBViewApp(QMainWindow):
 
     def remove_node(self) -> None:
         selected_item = self.cache_tree.get_selected_node()
-        if selected_item is None:
+        if selected_item is None or selected_item.deleted:
             return
         descendants = None
         if selected_item.in_database():
-            if self.db_deletion_mbox.enabled() and not selected_item.deleted:
+            if self.db_deletion_mbox.enabled():
                 if self.db_deletion_mbox.exec() != QMessageBox.Yes:
                     return
             mirror_item = self.db_tree.get_node(selected_item.id)
