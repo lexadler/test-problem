@@ -87,29 +87,15 @@ class DBTreeView(BaseTreeView):
         parent.appendRow(item)
         self._nodes_map[item.id] = item
 
-    def get_descendants(self, subtree_root_id: int) -> t.Set[int]:
-
-        descendants_ids = set()
-
-        def _traverse_subtree(item: DBViewNodeItem):
-            if item.hasChildren():
-                for row in range(item.rowCount()):
-                    child = item.child(row, 0)
-                    if child.deleted:
-                        continue
-                    descendants_ids.add(child.id)
-                    _traverse_subtree(child)
-
-        subtree_root = self.get_node(subtree_root_id)
-        _traverse_subtree(subtree_root)
-
-        return descendants_ids
-
-    def update_view(self, saved_cache: ExportedCache) -> None:
-        for node_id in saved_cache.marked_for_delete:
+    def update_view(
+        self,
+        updates: t.List[NodeUpdates],
+        deleted_ids: t.Set[int]
+    ) -> None:
+        for node_id in deleted_ids:
             item = self.get_node(node_id)
             item.set_deleted()
-        for node in saved_cache.updates:
+        for node in updates:
             item = self._nodes_map.get(node['id'])
             if item is not None:
                 item.set_data(node['value'])
@@ -125,7 +111,7 @@ class CachedTreeView(BaseTreeView):
     def __init__(self, index: int = 1):
         super().__init__()
         self._index = self._init_index = index
-        self._marked_for_delete: t.Set[int] = set()
+        self._deleted_subtree_roots: t.Set[int] = set()
 
     @staticmethod
     def _add_imported_child(
@@ -149,6 +135,13 @@ class CachedTreeView(BaseTreeView):
                 self._root.takeRow(row)
                 self._add_imported_child(item, top_item)
 
+    def _has_deleted_ancestors(self, item: CacheViewNodeItem) -> bool:
+        return bool(
+            self._deleted_subtree_roots.intersection(
+                item.ancestors
+            )
+        )
+
     def _mark_subtree_for_delete(
         self,
         subtree_root: CacheViewNodeItem
@@ -157,9 +150,10 @@ class CachedTreeView(BaseTreeView):
         def _delete_subtree(item: CacheViewNodeItem):
             item.mark_for_delete()
             if item.hasChildren():
-                for row in range(item.rowCount()):
+                for row in range(item.rowCount() - 1, -1, -1):
                     child = item.child(row, 0)
                     if child.deleted:
+                        self._deleted_subtree_roots.discard(child.id)
                         continue
                     if not child.in_database():
                         item.removeRow(row)
@@ -171,15 +165,18 @@ class CachedTreeView(BaseTreeView):
     def import_node(self, node: DBNodeModel) -> None:
         if node.id in self._nodes_map:
             return
-        if node.parent_id is None:
+        item = CacheViewNodeItem.from_db_model(node)
+        if item.parent_id is None:
             parent = self._root
         else:
-            parent = self._nodes_map.get(node.parent_id)
+            parent = self._nodes_map.get(item.parent_id)
             if parent is None:
                 parent = self._root
-        item = CacheViewNodeItem.from_db_model(node)
-        if item.id in self._marked_for_delete:
-            item.mark_for_delete()
+                if self._has_deleted_ancestors(item):
+                    item.mark_for_delete()
+            elif parent.deleted:
+                item.mark_for_delete()
+
         self._add_imported_child(parent, item)
         self._nodes_map[item.id] = item
         self._reparent_orphaned(item)
@@ -187,8 +184,6 @@ class CachedTreeView(BaseTreeView):
 
     def add_child_node(self, parent: CacheViewNodeItem, data: str) -> None:
         item = CacheViewNodeItem(
-            node_id=None,
-            parent_id=parent.id,
             data=data or None
         )
         item.set_unsaved()
@@ -197,22 +192,24 @@ class CachedTreeView(BaseTreeView):
     def delete_node(
         self,
         item: CacheViewNodeItem,
-        descendants_ids: t.Optional[t.Set[int]] = None
     ):
         if item.in_database():
             self._mark_subtree_for_delete(item)
-            self._marked_for_delete.add(item.id)
-            if descendants_ids:
-                self._update_deleted_descendants(descendants_ids)
+            self._deleted_subtree_roots.add(item.id)
+            self._update_deleted_descendants(item)
         else:
             self._remove_item_row(item)
 
-    def _update_deleted_descendants(self, descendants_ids: t.Set[int]) -> None:
+    def _update_deleted_descendants(self, deleted_item: CacheViewNodeItem) -> None:
         for row in range(self._root.rowCount() - 1, -1, -1):
             top_item = self._root.child(row, 0)
-            if top_item.id in descendants_ids:
+            if top_item is deleted_item:
+                continue
+            if top_item.is_descendant_of(deleted_item.id):
+                if top_item.deleted:
+                    self._deleted_subtree_roots.discard(top_item.id)
+                    continue
                 self._mark_subtree_for_delete(top_item)
-        self._marked_for_delete.update(descendants_ids)
 
     def save_cache_and_export_changes(self) -> ExportedCache:
         updates = []
@@ -226,9 +223,11 @@ class CachedTreeView(BaseTreeView):
                         updates.append(item.to_dict())
                         item.set_unmodifed()
                 else:
+                    parent = item.parent()
                     self._index += 1
                     item.id = self._index
-                    item.parent_id = item.parent().id
+                    item.parent_id = parent.id
+                    item.path = parent.path / str(parent.id)
                     updates.append(item.to_dict())
                     self._nodes_map[item.id] = item
                     item.set_saved()
@@ -236,14 +235,15 @@ class CachedTreeView(BaseTreeView):
                 _export_subtree(item.child(row, 0))
 
         _export_subtree(self._root)
+
         result = ExportedCache(
             updates=updates,
-            marked_for_delete=self._marked_for_delete,
+            deleted_subtree_roots=self._deleted_subtree_roots,
         )
-        self._marked_for_delete = set()
+        self._deleted_subtree_roots = set()
         return result
 
     def reset_view(self):
         super().reset_view()
         self._index = self._init_index
-        self._marked_for_delete = set()
+        self._deleted_subtree_roots = set()

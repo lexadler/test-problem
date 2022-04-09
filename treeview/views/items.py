@@ -1,4 +1,5 @@
 import typing as t
+from pathlib import PurePath
 
 from PyQt5.Qt import QStandardItem
 from PyQt5.QtGui import QColor
@@ -82,17 +83,39 @@ class CacheViewNodeItem(BaseNodeItem):
         self,
         node_id: t.Optional[int] = None,
         parent_id: t.Optional[int] = None,
+        path: t.Optional[PurePath] = None,
         data: t.Optional[str] = None,
         deleted: bool = False
     ):
         super().__init__(node_id, data)
         self.parent_id = parent_id
+        self.path = path
         self.data = data
         self.deleted = deleted
         self.modified = False
         self._backup_data: t.Optional[str] = None
+        self._ancestors: t.Optional[t.Set[int]] = None
         if self.deleted:
             self.setFont(STRIKED_FNT)
+
+    @property
+    def ancestors(self) -> t.Set[int]:
+        if self._ancestors is not None:
+            return self._ancestors
+        if self.path is None:
+            self._ancestors = set()
+        else:
+            self._ancestors = set(
+                map(lambda x: int(x), self.path.parts)
+            )
+        return self._ancestors
+
+    @ancestors.setter
+    def ancestors(self, value: t.Set[int]) -> None:
+        self._ancestors = value
+
+    def is_descendant_of(self, item_id: int) -> bool:
+        return item_id in self.ancestors
 
     def set_unsaved(self) -> None:
         self.setForeground(UNSAVED_COLOR)
@@ -133,6 +156,7 @@ class CacheViewNodeItem(BaseNodeItem):
         return NodeUpdates(
             id=self.id,
             parent_id=self.parent_id,
+            ancestry=str(self.path) if self.path else self.path,
             value=self.data,
         )
 
@@ -141,6 +165,7 @@ class CacheViewNodeItem(BaseNodeItem):
         return cls(
             node.id,
             node.parent_id,
+            PurePath(node.ancestry) if node.ancestry else node.ancestry,
             node.value,
             node.deleted
         )

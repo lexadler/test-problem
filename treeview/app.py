@@ -101,17 +101,15 @@ class TreeDBViewApp(QMainWindow):
         selected_item = self.cache_tree.get_selected_node()
         if selected_item is None or selected_item.deleted:
             return
-        descendants = None
         if selected_item.in_database():
             if self.db_deletion_mbox.enabled():
                 if self.db_deletion_mbox.exec() != QMessageBox.Yes:
                     return
-            descendants = self.db_tree.get_descendants(selected_item.id)
         else:
             if self.cache_deletion_mbox.enabled():
                 if self.cache_deletion_mbox.exec() != QMessageBox.Yes:
                     return
-        self.cache_tree.delete_node(selected_item, descendants)
+        self.cache_tree.delete_node(selected_item)
 
     def edit_node(self) -> None:
         selected_item = self.cache_tree.get_selected_node()
@@ -133,8 +131,13 @@ class TreeDBViewApp(QMainWindow):
     def apply_changes(self) -> None:
         saved_cache = self.cache_tree.save_cache_and_export_changes()
         self.db.update_table(saved_cache.updates)
-        self.db.soft_delete(*saved_cache.marked_for_delete)
-        self.db_tree.update_view(saved_cache)
+        deleted_ids = self.db.soft_delete_with_descendants(
+            *saved_cache.deleted_subtree_roots
+        )
+        self.db_tree.update_view(
+            saved_cache.updates,
+            deleted_ids
+        )
 
     def reset_all(self) -> None:
         if self.reset_mbox.enabled():
