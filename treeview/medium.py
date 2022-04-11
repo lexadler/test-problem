@@ -9,4 +9,4 @@ class NodeUpdates(t.TypedDict):
 
 class ExportedCache(t.NamedTuple):
     updates: t.List[NodeUpdates]
-    marked_for_delete: t.Set[int]
+    stillborns: t.List[str]

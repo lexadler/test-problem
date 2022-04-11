@@ -121,9 +121,7 @@ class CacheViewNodeItem(BaseNodeItem):
         if self.modified:
             self._set_text(self._backup_data)
             self.data = self._backup_data
-            self.modified = False
-        else:
-            self.setForeground(EDITED_COLOR)
+            self.set_unmodifed()
         self.deleted = True
         self.setFont(STRIKED_FNT)
 

@@ -40,6 +40,9 @@ DEFAULT_TREE = [
     DBNodeModel(id=6, parent_id=5, value='Node6'),
     DBNodeModel(id=7, parent_id=4, value='Node7'),
     DBNodeModel(id=8, parent_id=4, value='Node8'),
+    DBNodeModel(id=9, parent_id=7, value='Node9'),
+    DBNodeModel(id=10, parent_id=6, value='Node10'),
+    DBNodeModel(id=11, parent_id=10, value='Node11'),
 ]
 
 
@@ -104,7 +107,7 @@ class TreeDBClient:
                 DBNodeModel.id.in_(node_ids)
             ).update(
                 {'deleted': True},
-                synchronize_session='fetch'
+                synchronize_session=False
             )
             s.commit()
         return deleted_count

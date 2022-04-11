@@ -68,6 +68,19 @@ class TreeDBViewApp(QMainWindow):
         )
         return value, ok
 
+    def _stillborns_message(
+        self,
+        message: str,
+        stillborns: t.List[str]
+    ) -> None:
+        stillborns_ = '\n'.join(stillborns)
+        text = f'{message}:\n\n{stillborns_}'
+        QMessageBox.warning(
+            self,
+            'Warning message',
+            text
+        )
+
     def node_to_cache(self) -> None:
         selected_item = self.db_tree.get_selected_node()
         if selected_item is None:
@@ -77,7 +90,14 @@ class TreeDBViewApp(QMainWindow):
             raise IndexError(
                 f'Node with id {selected_item.id} not found in db'
             )
-        self.cache_tree.import_node(node)
+        stillborns = self.cache_tree.import_node(node)
+        if stillborns:
+            self._stillborns_message(
+                'Following unsaved nodes were deleted\n'
+                "as it's orphaned descendants turned out\n"
+                'to be marked for deletion',
+                stillborns
+            )
 
     def add_child_node(self) -> None:
         selected_item = self.cache_tree.get_selected_node()
@@ -101,17 +121,21 @@ class TreeDBViewApp(QMainWindow):
         selected_item = self.cache_tree.get_selected_node()
         if selected_item is None or selected_item.deleted:
             return
-        descendants = None
         if selected_item.in_database():
             if self.db_deletion_mbox.enabled():
                 if self.db_deletion_mbox.exec() != QMessageBox.Yes:
                     return
-            descendants = self.db_tree.get_descendants(selected_item.id)
         else:
             if self.cache_deletion_mbox.enabled():
                 if self.cache_deletion_mbox.exec() != QMessageBox.Yes:
                     return
-        self.cache_tree.delete_node(selected_item, descendants)
+        stillborns = self.cache_tree.delete_node(selected_item)
+        if stillborns:
+            self._stillborns_message(
+                'Following unsaved nodes were be deleted\n'
+                "as it's descendants were marked for deletion",
+                stillborns
+            )
 
     def edit_node(self) -> None:
         selected_item = self.cache_tree.get_selected_node()
@@ -131,10 +155,20 @@ class TreeDBViewApp(QMainWindow):
             selected_item.set_data(value)
 
     def apply_changes(self) -> None:
-        saved_cache = self.cache_tree.save_cache_and_export_changes()
+        deleted_ids = self.db_tree.delete_subtrees(
+            self.cache_tree.deleted_subtree_roots
+        )
+        self.db.soft_delete(*deleted_ids)
+        saved_cache = self.cache_tree.save_cache_and_export_changes(deleted_ids)
         self.db.update_table(saved_cache.updates)
-        self.db.soft_delete(*saved_cache.marked_for_delete)
-        self.db_tree.update_view(saved_cache)
+        self.db_tree.update_view(saved_cache.updates)
+        if saved_cache.stillborns:
+            self._stillborns_message(
+                'Following unsaved nodes were deleted\n'
+                "as it's orphaned descendants turned out\n"
+                'to be deleted',
+                saved_cache.stillborns
+            )
 
     def reset_all(self) -> None:
         if self.reset_mbox.enabled():
