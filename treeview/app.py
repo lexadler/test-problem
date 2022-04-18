@@ -132,7 +132,7 @@ class TreeDBViewApp(QMainWindow):
         stillborns = self.cache_tree.delete_node(selected_item)
         if stillborns:
             self._stillborns_message(
-                'Following unsaved nodes were be deleted\n'
+                'Following unsaved nodes were deleted\n'
                 "as it's descendants were marked for deletion",
                 stillborns
             )
